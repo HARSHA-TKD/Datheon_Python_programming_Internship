@@ -128,6 +128,30 @@ DIFFICULTIES = {
 }
 
 SAVE_FILE = "hangman_scores.json"
+WORD_FILE = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "google-10000-english-no-swears.txt"
+)
+
+
+def load_words():
+    """Load suitable words from the text file."""
+    try:
+        with open(WORD_FILE, "r", encoding="utf-8") as file:
+            words = [
+                line.strip().lower()
+                for line in file
+                if line.strip().isalpha()
+                and 4 <= len(line.strip()) <= 10
+            ]
+
+        if words:
+            return words
+
+    except OSError:
+        print("Word file unavailable. Using built-in words instead.")
+
+    return []
 
 
 def load_scores():
@@ -196,6 +220,11 @@ def choose_category():
 
             for category in CATEGORIES.values():
                 all_words.extend(category["words"])
+
+            english_words = load_words()
+
+            for word in english_words:
+                all_words.append((word, "General English word"))
 
             return "Mixed", all_words
 
