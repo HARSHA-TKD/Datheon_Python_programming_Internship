@@ -1,328 +1,283 @@
+
 import csv
 import os
 from datetime import datetime
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-PORTFOLIO_FILE = os.path.join(BASE_DIR, "portfolio.csv")
+HOLDINGS_FILE = os.path.join(BASE_DIR, "holdings.csv")
 HISTORY_FILE = os.path.join(BASE_DIR, "portfolio_history.csv")
 
 
-def load_portfolio():
-    """Load saved stock holdings from CSV."""
-    stocks = []
+def load_holdings():
+    """Load saved stock holdings."""
+    stocks = {}
 
-    if not os.path.exists(PORTFOLIO_FILE):
+    if not os.path.exists(HOLDINGS_FILE):
         return stocks
 
     try:
-        with open(PORTFOLIO_FILE, "r", newline="", encoding="utf-8") as file:
-            reader = csv.DictReader(file)
-
-            for row in reader:
-                stocks.append({
-                    "symbol": row["symbol"],
+        with open(HOLDINGS_FILE, "r", newline="", encoding="utf-8") as file:
+            for row in csv.DictReader(file):
+                symbol = row["symbol"]
+                stocks[symbol] = {
                     "quantity": int(row["quantity"]),
                     "buy_price": float(row["buy_price"]),
                     "current_price": float(row["current_price"])
-                })
-
+                }
     except (OSError, ValueError, KeyError):
-        print("Warning: Could not load portfolio data.")
+        print("Could not read holdings.csv. Check its contents.")
+        return {}
 
     return stocks
 
 
-def save_portfolio(stocks):
-    """Save holdings so they remain available after restarting."""
+def save_holdings(stocks):
+    """Save holdings so they remain available next time."""
     try:
-        with open(PORTFOLIO_FILE, "w", newline="", encoding="utf-8") as file:
+        with open(HOLDINGS_FILE, "w", newline="", encoding="utf-8") as file:
             fields = ["symbol", "quantity", "buy_price", "current_price"]
             writer = csv.DictWriter(file, fieldnames=fields)
             writer.writeheader()
-            writer.writerows(stocks)
 
+            for symbol, data in stocks.items():
+                writer.writerow({
+                    "symbol": symbol,
+                    "quantity": data["quantity"],
+                    "buy_price": data["buy_price"],
+                    "current_price": data["current_price"]
+                })
+        return True
     except OSError:
-        print("Error: Could not save portfolio.")
+        print("Could not save holdings.")
+        return False
 
 
-def calculate_performance(stock):
-    investment = stock["quantity"] * stock["buy_price"]
-    market_value = stock["quantity"] * stock["current_price"]
+def analyze_stock(symbol, data):
+    quantity = data["quantity"]
+    buy_price = data["buy_price"]
+    current_price = data["current_price"]
+
+    investment = quantity * buy_price
+    market_value = quantity * current_price
     profit_loss = market_value - investment
 
     if investment > 0:
-        return_percentage = (profit_loss / investment) * 100
+        return_percent = (profit_loss / investment) * 100
     else:
-        return_percentage = 0.0
+        return_percent = 0.0
 
     return {
+        "symbol": symbol,
+        "quantity": quantity,
         "investment": investment,
         "market_value": market_value,
         "profit_loss": profit_loss,
-        "return_percentage": return_percentage
+        "return_percent": return_percent
     }
 
 
-def get_totals(stocks):
-    investment = 0.0
-    market_value = 0.0
+def get_report(stocks):
+    report = [analyze_stock(symbol, data)
+              for symbol, data in stocks.items()]
 
-    for stock in stocks:
-        result = calculate_performance(stock)
-        investment += result["investment"]
-        market_value += result["market_value"]
+    total_investment = sum(item["investment"] for item in report)
+    total_value = sum(item["market_value"] for item in report)
+    total_profit_loss = total_value - total_investment
 
-    profit_loss = market_value - investment
-    return investment, market_value, profit_loss
+    if total_investment > 0:
+        total_return = total_profit_loss / total_investment * 100
+    else:
+        total_return = 0.0
 
-
-def add_stock(stocks):
-    symbol = input("Stock name or symbol: ").strip().upper()
-
-    if not symbol:
-        print("Symbol cannot be empty.")
-        return
-
-    try:
-        quantity = int(input("Quantity owned: "))
-        buy_price = float(input("Average purchase price (Rs.): "))
-        current_price = float(input("Current price (Rs.): "))
-
-        if quantity <= 0 or buy_price < 0 or current_price < 0:
-            print("Quantity must be positive; prices cannot be negative.")
-            return
-
-    except ValueError:
-        print("Invalid input. Please enter valid numbers.")
-        return
-
-    # Update an existing holding if the symbol already exists.
-    for stock in stocks:
-        if stock["symbol"] == symbol:
-            stock["quantity"] += quantity
-
-            old_cost = (stock["quantity"] - quantity) * stock["buy_price"]
-            new_cost = quantity * buy_price
-            stock["buy_price"] = (
-                (old_cost + new_cost) / stock["quantity"]
-            )
-            stock["current_price"] = current_price
-
-            save_portfolio(stocks)
-            print(f"{symbol} holding updated successfully.")
-            return
-
-    stocks.append({
-        "symbol": symbol,
-        "quantity": quantity,
-        "buy_price": buy_price,
-        "current_price": current_price
-    })
-
-    save_portfolio(stocks)
-    print(f"{symbol} added successfully.")
+    return report, total_investment, total_value, total_profit_loss, total_return
 
 
 def show_dashboard(stocks):
     if not stocks:
-        print("Your portfolio is empty. Add a stock first.")
+        print("\nYour portfolio is empty. Add a holding first.")
         return
 
-    investment, market_value, profit_loss = get_totals(stocks)
-    return_percentage = (
-        profit_loss / investment * 100 if investment else 0.0
-    )
+    report, investment, value, profit_loss, return_percent = get_report(stocks)
 
-    print("\n" + "=" * 65)
-    print("              PORTFOLIO PERFORMANCE DASHBOARD")
-    print("=" * 65)
+    print("\n" + "=" * 58)
+    print("             PORTFOLIO PERFORMANCE DASHBOARD")
+    print("=" * 58)
+    print(f"Total investment : Rs. {investment:,.2f}")
+    print(f"Current value   : Rs. {value:,.2f}")
+    print(f"Profit / Loss   : Rs. {profit_loss:+,.2f}")
+    print(f"Return          : {return_percent:+.2f}%")
+    print("-" * 58)
+    print(f"{'SYMBOL':<12}{'INVESTED':>13}{'VALUE':>13}{'P/L':>13}")
+    print("-" * 58)
 
-    print(f"{'SYMBOL':<12}{'QTY':>6}{'INVESTED':>14}"
-          f"{'VALUE':>14}{'P/L':>14}")
-
-    for stock in stocks:
-        result = calculate_performance(stock)
+    for item in report:
         print(
-            f"{stock['symbol']:<12}"
-            f"{stock['quantity']:>6}"
-            f"{result['investment']:>14.2f}"
-            f"{result['market_value']:>14.2f}"
-            f"{result['profit_loss']:>14.2f}"
+            f"{item['symbol']:<12}"
+            f"{item['investment']:>13,.2f}"
+            f"{item['market_value']:>13,.2f}"
+            f"{item['profit_loss']:>+13,.2f}"
         )
 
-    print("-" * 65)
-    print(f"Total investment : Rs. {investment:,.2f}")
-    print(f"Current value    : Rs. {market_value:,.2f}")
-    print(f"Profit / Loss    : Rs. {profit_loss:,.2f}")
-    print(f"Overall return   : {return_percentage:.2f}%")
-
-    if profit_loss > 0:
-        print("Performance      : PORTFOLIO IN PROFIT")
-    elif profit_loss < 0:
-        print("Performance      : PORTFOLIO IN LOSS")
-    else:
-        print("Performance      : BREAK-EVEN")
-
-    print("=" * 65)
+    print("=" * 58)
 
 
-def analyze_performers(stocks):
+def show_performance_ranking(stocks):
     if not stocks:
-        print("Add stocks to analyze performance.")
+        print("\nNo holdings to analyze.")
         return
 
+    report, *_ = get_report(stocks)
     ranked = sorted(
-        stocks,
-        key=lambda stock: calculate_performance(stock)["return_percentage"],
+        report,
+        key=lambda item: item["return_percent"],
         reverse=True
     )
 
     print("\nPERFORMANCE RANKING")
-    print("-" * 45)
+    print("-" * 48)
 
-    for rank, stock in enumerate(ranked, start=1):
-        result = calculate_performance(stock)
+    for rank, item in enumerate(ranked, start=1):
         print(
-            f"{rank}. {stock['symbol']:<12}"
-            f"{result['return_percentage']:>8.2f}% return"
-            f"  P/L: Rs. {result['profit_loss']:,.2f}"
+            f"{rank}. {item['symbol']:<12} "
+            f"{item['return_percent']:+.2f}% "
+            f"(P/L: Rs. {item['profit_loss']:+,.2f})"
         )
 
     print("\nBest performer :", ranked[0]["symbol"])
-    print("Weakest performer:", ranked[-1]["symbol"])
-    print("Note: Past returns do not predict future returns.")
+    print("Lowest performer:", ranked[-1]["symbol"])
 
 
 def show_allocation(stocks):
     if not stocks:
-        print("Your portfolio is empty.")
+        print("\nNo holdings to analyze.")
         return
 
-    _, market_value, _ = get_totals(stocks)
+    report, _, total_value, _, _ = get_report(stocks)
 
     print("\nPORTFOLIO ALLOCATION")
-    print("-" * 45)
+    print("-" * 42)
 
-    for stock in sorted(
-        stocks,
-        key=lambda item: item["quantity"] * item["current_price"],
-        reverse=True
+    for item in sorted(
+        report, key=lambda item: item["market_value"], reverse=True
     ):
-        value = stock["quantity"] * stock["current_price"]
-        percentage = value / market_value * 100 if market_value else 0
+        if total_value > 0:
+            allocation = item["market_value"] / total_value * 100
+        else:
+            allocation = 0.0
 
-        bar = "#" * int(percentage / 5)
+        bar = "#" * int(allocation / 5)
+        print(f"{item['symbol']:<12} {allocation:6.2f}% {bar}")
 
-        print(
-            f"{stock['symbol']:<12} {percentage:6.2f}% "
-            f"Rs. {value:,.2f} {bar}"
-        )
+    if total_value > 0:
+        largest = max(report, key=lambda item: item["market_value"])
+        share = largest["market_value"] / total_value * 100
 
-    if stocks:
-        largest = max(
-            stocks,
-            key=lambda item: item["quantity"] * item["current_price"]
-        )
-        largest_value = largest["quantity"] * largest["current_price"]
-        concentration = (
-            largest_value / market_value * 100 if market_value else 0
-        )
-
-        print(f"\nLargest holding: {largest['symbol']}")
-
-        if concentration >= 50:
-            print("Notice: Over half of the portfolio value is in one holding.")
+        if share >= 50:
+            print(
+                f"\nConcentration notice: {largest['symbol']} represents "
+                f"{share:.1f}% of portfolio value."
+            )
 
 
 def save_snapshot(stocks):
     if not stocks:
-        print("Add stocks before saving a snapshot.")
+        print("\nNo holdings available to save.")
         return
 
-    investment, market_value, profit_loss = get_totals(stocks)
-    percentage = profit_loss / investment * 100 if investment else 0
-
+    _, investment, value, profit_loss, return_percent = get_report(stocks)
     file_exists = os.path.exists(HISTORY_FILE)
 
     try:
         with open(HISTORY_FILE, "a", newline="", encoding="utf-8") as file:
-            writer = csv.writer(file)
+            fields = [
+                "timestamp", "investment", "market_value",
+                "profit_loss", "return_percent"
+            ]
+            writer = csv.DictWriter(file, fieldnames=fields)
 
             if not file_exists or os.path.getsize(HISTORY_FILE) == 0:
-                writer.writerow([
-                    "timestamp", "investment", "market_value",
-                    "profit_loss", "return_percentage"
-                ])
+                writer.writeheader()
 
-            writer.writerow([
-                datetime.now().isoformat(timespec="seconds"),
-                f"{investment:.2f}",
-                f"{market_value:.2f}",
-                f"{profit_loss:.2f}",
-                f"{percentage:.2f}"
-            ])
+            writer.writerow({
+                "timestamp": datetime.now().isoformat(timespec="seconds"),
+                "investment": f"{investment:.2f}",
+                "market_value": f"{value:.2f}",
+                "profit_loss": f"{profit_loss:.2f}",
+                "return_percent": f"{return_percent:.2f}"
+            })
 
-        print("Performance snapshot saved successfully.")
-
+        print("Performance snapshot saved.")
     except OSError:
-        print("Error: Could not save performance history.")
+        print("Could not save the performance snapshot.")
 
 
-def view_history():
+def show_history():
     if not os.path.exists(HISTORY_FILE):
-        print("No history yet. Save a snapshot first.")
+        print("\nNo performance history yet. Save a snapshot first.")
         return
+
+    print("\nSAVED PERFORMANCE HISTORY")
+    print("-" * 72)
 
     try:
         with open(HISTORY_FILE, "r", newline="", encoding="utf-8") as file:
             rows = list(csv.DictReader(file))
 
         if not rows:
-            print("No performance snapshots found.")
+            print("No snapshots recorded yet.")
             return
-
-        print("\nSAVED PERFORMANCE HISTORY")
-        print("-" * 75)
 
         for row in rows:
             print(
                 f"{row['timestamp']} | "
                 f"Value: Rs. {float(row['market_value']):,.2f} | "
-                f"P/L: Rs. {float(row['profit_loss']):,.2f} | "
-                f"Return: {float(row['return_percentage']):.2f}%"
+                f"P/L: Rs. {float(row['profit_loss']):+,.2f} | "
+                f"Return: {float(row['return_percent']):+.2f}%"
             )
-
-        if len(rows) >= 2:
-            first = float(rows[0]["market_value"])
-            latest = float(rows[-1]["market_value"])
-            change = latest - first
-
-            print("\nChange since first saved snapshot:")
-            print(f"Rs. {change:,.2f}")
-
-            if first:
-                print(f"Value change: {change / first * 100:.2f}%")
-
-        print(
-            "\nReminder: This comparison uses saved snapshots and "
-            "does not account for deposits, withdrawals, or trades "
-            "between snapshots."
-        )
-
     except (OSError, ValueError, KeyError):
-        print("Error: Could not read history. Check the CSV file.")
+        print("Could not read the performance history.")
+
+
+def add_or_update_stock(stocks):
+    symbol = input("Stock symbol/name: ").strip().upper()
+
+    if not symbol:
+        print("Symbol cannot be empty.")
+        return
+
+    try:
+        quantity = int(input("Total quantity owned: "))
+        buy_price = float(input("Average purchase price per share: Rs. "))
+        current_price = float(input("Current price per share: Rs. "))
+
+        if quantity <= 0 or buy_price <= 0 or current_price < 0:
+            print("Quantity and purchase price must be positive; current price cannot be negative.")
+            return
+
+    except ValueError:
+        print("Please enter valid numbers.")
+        return
+
+    stocks[symbol] = {
+        "quantity": quantity,
+        "buy_price": buy_price,
+        "current_price": current_price
+    }
+
+    if save_holdings(stocks):
+        print(f"{symbol} saved successfully.")
 
 
 def main():
-    stocks = load_portfolio()
+    stocks = load_holdings()
 
     while True:
-        print("\n" + "=" * 45)
-        print("       STOCK PORTFOLIO ANALYZER")
-        print("=" * 45)
-        print("1. Add or update stock")
+        print("\n" + "=" * 42)
+        print("      STOCK PORTFOLIO ANALYZER")
+        print("=" * 42)
+        print("1. Add or update a stock")
         print("2. View performance dashboard")
-        print("3. Analyze best and worst performers")
+        print("3. Rank best and worst performers")
         print("4. View portfolio allocation")
         print("5. Save performance snapshot")
         print("6. View historical performance")
@@ -331,20 +286,19 @@ def main():
         choice = input("Choose an option (1-7): ").strip()
 
         if choice == "1":
-            add_stock(stocks)
+            add_or_update_stock(stocks)
         elif choice == "2":
             show_dashboard(stocks)
         elif choice == "3":
-            analyze_performers(stocks)
+            show_performance_ranking(stocks)
         elif choice == "4":
             show_allocation(stocks)
         elif choice == "5":
             save_snapshot(stocks)
         elif choice == "6":
-            view_history()
+            show_history()
         elif choice == "7":
-            save_portfolio(stocks)
-            print("Portfolio saved. Goodbye!")
+            print("Thanks for using Stock Portfolio Analyzer!")
             break
         else:
             print("Invalid choice. Enter a number from 1 to 7.")
