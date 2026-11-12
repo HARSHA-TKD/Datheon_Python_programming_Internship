@@ -181,7 +181,7 @@ Datheon_Python_Programming_Internship/
 Clone the repository:
 
 ```bash
-git clone <your-repository-url>
+git clone https://github.com/HARSHA-TKD/Datheon_Python_programming_Internship.git
 ```
 
 Navigate to the repository:
